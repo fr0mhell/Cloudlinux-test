@@ -1,8 +1,9 @@
-from pathlib import Path
+import argparse
 import datetime as dt
+from pathlib import Path
 import subprocess
 
-from differ import parse_diff, Diff, apply_diffs, process_logs, ResultLog, Status
+from differ import parse_diff, Diff, apply_diffs, process_logs, Status
 
 
 def _make_gen(reader):
@@ -35,8 +36,28 @@ def get_diff_file(before_file: str | Path, after_file: str | Path) -> str:
 
 
 if __name__ == '__main__':
-    before = 'examples/2_master'
-    after = 'examples/1_branch'
+    parser = argparse.ArgumentParser(
+        prog='Conflict Resolver',
+        description='Backports changes into new file trying to resolve conflicts.',
+    )
+    parser.add_argument('before')
+    parser.add_argument('after')
+    parser.add_argument('target')
+    args = parser.parse_args()
+
+    before = args.before  # 'examples/2_master'
+    before_path = Path(before)
+    if not before_path.exists():
+        raise FileNotFoundError(f'File {before} not found')
+    if not before_path.is_file():
+        raise FileNotFoundError(f'{before} is not a file')
+
+    after = args.after  # 'examples/1_branch'
+    after_path = Path(after)
+    if not after_path.exists():
+        raise FileNotFoundError(f'File {after} not found')
+    if not after_path.is_file():
+        raise FileNotFoundError(f'{after} is not a file')
     result = 'result.c'
 
     before_lines = rawgencount(before)
@@ -44,6 +65,7 @@ if __name__ == '__main__':
 
     diff_file = get_diff_file(before, after)
     diffs: list[Diff] = parse_diff(diff_file)
+    Path(diff_file).unlink()
     logs = apply_diffs(before, diffs, result)
 
     with open(f'{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}.log', 'w') as log_f:
