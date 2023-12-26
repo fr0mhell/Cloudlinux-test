@@ -2,7 +2,7 @@ from pathlib import Path
 import datetime as dt
 import subprocess
 
-from differ import parse_diff, Diff, apply_diffs
+from differ import parse_diff, Diff, apply_diffs, process_logs, ResultLog, Status
 
 
 def _make_gen(reader):
@@ -45,5 +45,22 @@ if __name__ == '__main__':
     diff_file = get_diff_file(before, after)
     diffs: list[Diff] = parse_diff(diff_file)
     logs = apply_diffs(before, diffs, result)
-    print(logs)
+
+    with open(f'{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}.log', 'w') as log_f:
+        for log in process_logs(logs, before_lines, after_lines):
+            if log.status == Status.ADDED:
+                log_f.write(
+                    f'{log.status}. {after} ({log.new_start}, {log.new_end}) -> '
+                    f'{before} ({log.old_end})\n'
+                )
+            elif log.status == Status.REMOVED:
+                log_f.write(
+                    f'{log.status}. {after} ({log.new_start}) -x '
+                    f'{before} ({log.old_start}, {log.old_end})\n'
+                )
+            else:
+                log_f.write(
+                    f'{log.status}. {after} ({log.new_start}, {log.new_end}) -> '
+                    f'{before} ({log.old_start}, {log.old_end})\n'
+                )
 

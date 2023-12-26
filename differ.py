@@ -21,22 +21,6 @@ class ResultLog:
     new_start: int | None = None
     new_end: int | None = None
 
-    def __str__(self) -> str:
-        as_dict = {'status': self.status}
-        match self.status:
-            case Status.ADDED:
-                as_dict['new_start'] = self.new_start
-                as_dict['new_end'] = self.new_end
-            case Status.REMOVED:
-                as_dict['old_start'] = self.old_start
-                as_dict['old_end'] = self.old_end
-            case _:
-                as_dict['old_start'] = self.old_start
-                as_dict['old_end'] = self.old_end
-                as_dict['new_start'] = self.new_start
-                as_dict['new_end'] = self.new_end
-        return str(as_dict)
-
 
 @dataclass
 class Diff:
@@ -85,6 +69,7 @@ class Diff:
                 elif to_add:
                     log_entries.append(ResultLog(
                         status=Status.ADDED,
+                        old_end=old_counter - 1,
                         new_start=new_counter - len(to_add),
                         new_end=new_counter - 1,
                     ))
@@ -94,6 +79,7 @@ class Diff:
                     log_entries.append(ResultLog(
                         status=Status.REMOVED,
                         old_start=old_counter - len(to_remove),
+                        new_start=new_counter - len(to_add),
                         old_end=old_counter - 1,
                     ))
                     to_remove = []
@@ -165,24 +151,64 @@ def apply_diffs(before_file: str, diffs: list[Diff], result_file: str) -> list[R
 
             for idx, line in enumerate(before_f, start=1):
                 if current_diff >= len(diffs):
-                    print('No more diffs to process')
-                    print('No changes')
                     res_f.write(line)
                     continue
 
                 if idx < diffs[current_diff].old_start:
-                    print('No changes')
                     res_f.write(line)
                     continue
 
                 if diffs[current_diff].old_start == idx:
-                    print(f'Processing diff {current_diff}')
                     log_entries.extend(diffs[current_diff].process_diff())
 
                 if idx == diffs[current_diff].old_end:
-                    print(f'Inserting diff {current_diff}')
                     res_f.writelines(f'{l}\n' for l in diffs[current_diff].resolved_content)
                     current_diff += 1
                     continue
 
     return log_entries
+
+
+def process_logs(logs: list[ResultLog], old_file_length: int, new_file_length: int):
+    no_changes = []
+    for idx, log in enumerate(logs):
+        if idx == 0 and log.old_start and log.old_start > 1:
+            no_changes.append(ResultLog(
+                status=Status.NO_CHANGE,
+                old_start=1,
+                old_end=log.old_start - 1,
+                new_start=1,
+                new_end=log.new_start - 1,
+            ))
+
+        if log.status in {Status.ADDED, Status.REMOVED, Status.CONFLICT}:
+            if no_changes:
+                yield ResultLog(
+                    status=Status.NO_CHANGE,
+                    old_start=no_changes[0].old_start,
+                    old_end=no_changes[-1].old_end,
+                    new_start=no_changes[0].new_start,
+                    new_end=no_changes[-1].new_end,
+                )
+                no_changes = []
+            yield log
+        else:
+            no_changes.append(log)
+
+        if idx == len(logs) - 1:
+            no_changes.append(ResultLog(
+                status=Status.NO_CHANGE,
+                old_start=log.old_end + 1,
+                old_end=old_file_length,
+                new_start=log.new_end + 1,
+                new_end=new_file_length,
+            ))
+
+    if no_changes:
+        yield ResultLog(
+            status=Status.NO_CHANGE,
+            old_start=no_changes[0].old_start,
+            old_end=no_changes[-1].old_end,
+            new_start=no_changes[0].new_start,
+            new_end=no_changes[-1].new_end,
+        )
